@@ -55,7 +55,7 @@ class MyPortfolio:
         self.price = price
         self.returns = price.pct_change().fillna(0)
         self.exclude = exclude
-        self.lookback = lookback
+        self.lookback = max(60, lookback)
         self.gamma = gamma
 
     def calculate_weights(self):
@@ -70,8 +70,46 @@ class MyPortfolio:
         """
         TODO: Complete Task 4 Below
         """
-        
-        
+        import itertools
+
+        # work only on non-SPY assets
+        assets = self.price.columns[self.price.columns != self.exclude]
+        rets = self.returns[assets]  # full-period returns for those assets
+
+        best_sharpe = -np.inf
+        best_weights = None
+
+        # we will consider all equal-weight combos of size 1, 2, 3
+        for k in [1, 2, 3]:
+            for combo in itertools.combinations(assets, k):
+                # equal weight within the combo
+                w = pd.Series(0.0, index=assets)
+                w[list(combo)] = 1.0 / k
+
+                # portfolio returns for this combo over the entire period
+                port_ret = rets.dot(w)
+
+                # avoid zero-std cases
+                std = port_ret.std()
+                if std == 0 or np.isnan(std):
+                    continue
+
+                sharpe = port_ret.mean() / std
+
+                if sharpe > best_sharpe:
+                    best_sharpe = sharpe
+                    best_weights = w.copy()
+
+        # if something went wrong, fall back to equal weight
+        if best_weights is None:
+            best_weights = pd.Series(1.0 / len(assets), index=assets)
+
+        # build full weight matrix: same weights every day
+        for date in self.price.index:
+            row = pd.Series(0.0, index=self.price.columns)
+            row[assets] = best_weights.values  # SPY stays 0
+            self.portfolio_weights.loc[date] = row
+
         """
         TODO: Complete Task 4 Above
         """
